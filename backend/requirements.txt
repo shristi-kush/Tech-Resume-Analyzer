@@ -1,0 +1,10 @@
+flask==3.0.3
+flask-cors==4.0.1
+PyJWT==2.8.0
+werkzeug==3.0.3
+pdfminer3==2018.12.3.0
+spacy==2.3.5
+nltk==3.7
+numpy<2.0.0
+python-dotenv==1.0.1
+requests==2.32.3

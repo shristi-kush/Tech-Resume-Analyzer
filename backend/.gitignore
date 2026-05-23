@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.db
+uploads/*
+!uploads/.gitkeep
+.env
+.env.example

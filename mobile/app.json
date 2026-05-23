@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Tech Resume Analyzer",
+    "slug": "resume-analyzer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "resume-analyzer",
+    "splash": {
+      "image": "./assets/images/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "icon": "./assets/images/logo.png",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "usesCleartextTraffic": true
+    },
+    "extra": {},
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
