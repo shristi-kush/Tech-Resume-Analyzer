@@ -19,7 +19,7 @@ if [[ "$PY_MAJOR" -ne 3 || "$PY_MINOR" -ne 9 ]]; then
   exit 1
 fi
 
-pip install --upgrade "pip<25" setuptools wheel
+pip install --upgrade "pip<25" "setuptools<81" wheel
 
 # Spacy 2.3.5 stack — wheels only (never compile blis/thinc on Render)
 pip install "numpy>=1.19.0,<2.0.0" --only-binary=numpy
@@ -38,4 +38,4 @@ pip install https://github.com/explosion/spacy-models/releases/download/en_core_
 
 python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('averaged_perceptron_tagger'); nltk.download('words')"
 
-python -c "import spacy; spacy.load('en_core_web_sm'); print('spacy OK')"
+python -c "import pkg_resources; import spacy; spacy.load('en_core_web_sm'); print('spacy OK')"
