@@ -14,8 +14,15 @@ def _use_sqlite() -> bool:
 
 @contextmanager
 def get_connection():
+    # MVP: always SQLite. Render Postgres DATABASE_URL is ignored until Postgres support is added.
     if not _use_sqlite():
-        raise NotImplementedError("Only SQLite is configured in this MVP. Set DATABASE_URL to sqlite.")
+        import warnings
+
+        warnings.warn(
+            "DATABASE_URL is not sqlite; using resume_analyzer.db instead. "
+            "Remove DATABASE_URL on Render if you do not need Postgres.",
+            stacklevel=2,
+        )
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
