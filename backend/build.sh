@@ -36,6 +36,15 @@ pip install --prefer-binary -r requirements.txt
 
 pip install https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-2.3.1/en_core_web_sm-2.3.1.tar.gz
 
-python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('averaged_perceptron_tagger'); nltk.download('words')"
+NLTK_DIR="$(pwd)/nltk_data"
+mkdir -p "$NLTK_DIR"
+export NLTK_DATA="$NLTK_DIR"
+python -c "
+import nltk, os
+d = os.environ['NLTK_DATA']
+for pkg in ('punkt', 'stopwords', 'wordnet', 'averaged_perceptron_tagger', 'words'):
+    nltk.download(pkg, download_dir=d)
+print('NLTK data:', d)
+"
 
 python -c "import pkg_resources; import spacy; spacy.load('en_core_web_sm'); print('spacy OK')"
