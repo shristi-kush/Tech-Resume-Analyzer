@@ -1,0 +1,11 @@
+# Optional: connect this repo in Render via Blueprint, or set PYTHON_VERSION manually.
+services:
+  - type: web
+    name: tech-resume-analyzer
+    runtime: python
+    rootDir: backend
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: gunicorn wsgi:application --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.9.18"
