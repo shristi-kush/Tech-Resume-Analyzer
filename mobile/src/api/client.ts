@@ -160,7 +160,7 @@ export async function analyzeResume(params: {
 
   let res: Response;
   const controller = new AbortController();
-  const timeoutMs = params.analysisMode === 'ollama' ? 200_000 : 90_000;
+  const timeoutMs = params.analysisMode === 'ollama' ? 510_000 : 180_000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const authHeaders = await getAuthHeaders();

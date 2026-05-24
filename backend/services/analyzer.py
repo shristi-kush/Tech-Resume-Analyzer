@@ -1,4 +1,5 @@
 import random
+import re
 
 from pyresparser import ResumeParser
 
@@ -19,6 +20,10 @@ UIUX_KEYWORDS = {
     "ux", "adobe xd", "figma", "zeplin", "balsamiq", "ui", "prototyping", "wireframes",
     "user research", "user experience",
 }
+
+_ALL_SKILL_KEYWORDS = (
+    DS_KEYWORDS | WEB_KEYWORDS | ANDROID_KEYWORDS | IOS_KEYWORDS | UIUX_KEYWORDS
+)
 
 FIELD_SKILLS = {
     "Data Science": [
@@ -93,6 +98,80 @@ def _score_resume(resume_text: str) -> tuple[int, list[dict]]:
             tips.append({"label": label, "passed": False, "points": points})
 
     return score, tips
+
+
+def _extract_email(text: str):
+    match = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text or "")
+    return match.group(0) if match else None
+
+
+def _extract_phone(text: str):
+    match = re.search(
+        r"(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)?\d{3,4}[-.\s]?\d{4}",
+        text or "",
+    )
+    return match.group(0).strip() if match else None
+
+
+def _guess_name(text: str):
+    for line in (text or "").splitlines()[:8]:
+        line = line.strip()
+        if not line or "@" in line or re.search(r"\d{5,}", line):
+            continue
+        if 2 <= len(line.split()) <= 5 and len(line) < 60:
+            return line
+    return None
+
+
+def _extract_skills_from_text(text: str) -> list[str]:
+    lower = (text or "").lower()
+    found = [kw for kw in _ALL_SKILL_KEYWORDS if kw in lower]
+    return list(dict.fromkeys(found))[:24]
+
+
+def analyze_resume_light(pdf_path: str, course_count: int = 5) -> dict:
+    """Fast baseline for Detailed mode: PDF text + regex/keywords (no spacy/pyresparser)."""
+    resume_text = extract_text_from_pdf(pdf_path)
+    if not (resume_text or "").strip():
+        raise ValueError("Could not extract text from PDF.")
+
+    skills = _extract_skills_from_text(resume_text)
+    prediction = _predict_field(skills)
+    field = prediction["field"]
+    courses = _pick_courses(field, course_count) if field != "NA" else []
+    level = _candidate_level(resume_text, None)
+    score, tips = _score_resume(resume_text)
+
+    youtube = resolve_youtube(
+        "resume_writing" if score < 50 else None,
+        field,
+        level,
+    )
+
+    return {
+        "analysis_mode": "nlp",
+        "profile": {
+            "name": _guess_name(resume_text),
+            "email": _extract_email(resume_text),
+            "phone": _extract_phone(resume_text),
+            "degree": None,
+            "pages": None,
+        },
+        "skills": skills,
+        "predicted_field": field,
+        "candidate_level": level,
+        "recommended_skills": prediction.get("recommended_skills", []),
+        "prediction_message": prediction.get("message"),
+        "courses": courses,
+        "resume_score": score,
+        "resume_tips": tips,
+        "bonus_videos": {
+            "resume": random.choice(resume_videos),
+            "interview": random.choice(interview_videos),
+        },
+        "youtube_video": youtube,
+        "ai_analysis": None,
+    }
 
 
 def analyze_resume(pdf_path: str, course_count: int = 5) -> dict:

@@ -197,7 +197,7 @@ def check_ollama_available() -> dict:
 
 
 def analyze_resume_comprehensive(pdf_path: str, course_count: int = 5) -> dict:
-    """NLP baseline + Ollama Qwen comprehensive analysis + YouTube pick."""
+    """NLP baseline + Ollama comprehensive analysis + YouTube pick."""
     nlp = analyze_resume(pdf_path, course_count=course_count)
     resume_text = extract_text_from_pdf(pdf_path)
     if not (resume_text or "").strip():
