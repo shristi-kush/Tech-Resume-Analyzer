@@ -40,5 +40,6 @@ elif OLLAMA_API_KEY or "ollama.com" in OLLAMA_BASE_URL:
 else:
     OLLAMA_MODEL = "qwen2.5"
 
-OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
+# Keep below GUNICORN_TIMEOUT (default 180 on Render)
+OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "90"))
 OLLAMA_USE_CLOUD = bool(OLLAMA_API_KEY) or "ollama.com" in OLLAMA_BASE_URL

@@ -28,7 +28,9 @@
       },
       "usesCleartextTraffic": true
     },
-    "extra": {},
+    "extra": {
+      "apiUrl": "https://tech-resume-analyzer-1.onrender.com"
+    },
     "plugins": [
       "expo-font"
     ]

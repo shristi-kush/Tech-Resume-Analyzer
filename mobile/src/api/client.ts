@@ -1,15 +1,26 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+const PRODUCTION_API = 'https://tech-resume-analyzer-1.onrender.com';
+
 /**
- * Resolve Flask API URL for dev:
+ * Resolve Flask API URL:
  * - EXPO_PUBLIC_API_URL wins if set
- * - Otherwise use same LAN IP as Metro (Expo Go on a physical device)
- * - Emulator: 10.0.2.2 (Android) / localhost (iOS sim)
+ * - app.json extra.apiUrl (production default)
+ * - Dev: same LAN IP as Metro (Expo Go) or emulator localhost
  */
 function resolveApiBase(): string {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
+  }
+
+  const fromExtra = Constants.expoConfig?.extra?.apiUrl as string | undefined;
+  if (fromExtra) {
+    return fromExtra.replace(/\/$/, '');
+  }
+
+  if (!__DEV__) {
+    return PRODUCTION_API;
   }
 
   const hostUri =
@@ -74,6 +85,13 @@ export type AnalyzeResult = {
 
 async function parseJson(res: Response) {
   const text = await res.text();
+  if (text.trimStart().startsWith('<')) {
+    const hint =
+      res.status >= 500
+        ? 'Server timed out or crashed. Try Quick scan, or wait a minute and retry Detailed review.'
+        : `Unexpected HTML response (${res.status})`;
+    throw new Error(hint);
+  }
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -141,17 +159,30 @@ export async function analyzeResume(params: {
   } as unknown as Blob);
 
   let res: Response;
+  const controller = new AbortController();
+  const timeoutMs = params.analysisMode === 'ollama' ? 200_000 : 90_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const authHeaders = await getAuthHeaders();
     res = await fetch(`${API_BASE}/api/v1/analyze`, {
       method: 'POST',
       headers: { 'X-Upload-Source': 'mobile', ...authHeaders },
       body: form,
+      signal: controller.signal,
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(
+        'Analysis took too long. Try Quick scan, or retry Detailed review on a stable connection.',
+      );
+    }
     throw new Error(
-      'Could not connect. Make sure the app service is running and your device is on the same network.'
+      API_BASE.startsWith('https://')
+        ? 'Could not reach the server. It may be waking up (free tier) — wait a minute and try again.'
+        : 'Could not connect. Start the Flask backend locally or set EXPO_PUBLIC_API_URL in mobile/.env.',
     );
+  } finally {
+    clearTimeout(timer);
   }
 
   const json = await parseJson(res);
