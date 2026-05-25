@@ -14,10 +14,15 @@ from services.ollama_analyzer import analyze_resume_comprehensive, check_ollama_
 from services.auth import authenticate_user, register_user
 from services.database import fetch_analytics, fetch_feedback, init_db, save_analysis, save_feedback
 from services.geo import get_client_ip, lookup_geo
+from services.resume_fetch import download_resume_pdf
 
 api_bp = Blueprint("api", __name__, url_prefix="/api/v1")
 
 ALLOWED = {".pdf"}
+DISALLOWED_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic",
+    ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".zip",
+}
 
 
 def _decode_token(token: str) -> dict:
@@ -95,29 +100,55 @@ def ollama_status():
 
 @api_bp.route("/analyze", methods=["POST"])
 def analyze():
-    if "resume" not in request.files:
-        return jsonify({"error": "PDF file required (field: resume)"}), 400
+    content_type = (request.content_type or "").lower()
+    is_json = "application/json" in content_type
+    json_body = (request.get_json(silent=True) or {}) if is_json else {}
 
-    file = request.files["resume"]
-    if not file.filename:
-        return jsonify({"error": "Empty filename"}), 400
+    def field(name: str, default: str = "") -> str:
+        if is_json:
+            val = json_body.get(name, default)
+            return (str(val).strip() if val is not None else default)
+        return (request.form.get(name) or default).strip()
 
-    ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED:
-        return jsonify({"error": "Only PDF files are allowed"}), 400
-
-    act_name = request.form.get("act_name", "").strip()
-    act_mail = request.form.get("act_mail", "").strip()
-    act_mob = request.form.get("act_mob", "").strip()
-    course_count = min(int(request.form.get("course_count", 5)), 10)
-    analysis_mode = (request.form.get("analysis_mode") or "nlp").strip().lower()
+    act_name = field("act_name")
+    act_mail = field("act_mail")
+    act_mob = field("act_mob")
+    try:
+        course_count = min(int(field("course_count", "5")), 10)
+    except ValueError:
+        course_count = 5
+    analysis_mode = field("analysis_mode", "nlp").lower()
     if analysis_mode not in ("nlp", "ollama"):
         return jsonify({"error": "analysis_mode must be 'nlp' or 'ollama'"}), 400
 
-    filename = secure_filename(file.filename)
-    unique_name = f"{secrets.token_hex(8)}_{filename}"
-    save_path = UPLOAD_DIR / unique_name
-    file.save(save_path)
+    resume_url = field("resume_url")
+    file = None if is_json else request.files.get("resume")
+    has_file = file is not None and bool(file.filename)
+
+    if has_file and resume_url:
+        return jsonify({"error": "Send either a PDF file or resume_url, not both"}), 400
+    if not has_file and not resume_url:
+        return jsonify({"error": "PDF file (resume) or resume_url is required"}), 400
+
+    save_path: Optional[Path] = None
+    unique_name = ""
+
+    try:
+        if resume_url:
+            save_path, raw_name = download_resume_pdf(resume_url)
+            unique_name = save_path.name
+        else:
+            ext = Path(file.filename).suffix.lower()
+            if ext in DISALLOWED_EXTENSIONS or ext not in ALLOWED:
+                return jsonify({
+                    "error": "Only PDF resumes are supported. Upload a .pdf file or a PDF link.",
+                }), 400
+            filename = secure_filename(file.filename)
+            unique_name = f"{secrets.token_hex(8)}_{filename}"
+            save_path = UPLOAD_DIR / unique_name
+            file.save(save_path)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 422
 
     try:
         if analysis_mode == "ollama":
@@ -156,7 +187,7 @@ def analyze():
     except Exception as e:
         return jsonify({"error": f"Analysis failed: {e}"}), 500
     finally:
-        if save_path.exists():
+        if save_path is not None and save_path.exists():
             try:
                 os.remove(save_path)
             except OSError:

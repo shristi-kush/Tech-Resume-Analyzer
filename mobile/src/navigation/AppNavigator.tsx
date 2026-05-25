@@ -20,8 +20,8 @@ import { RootStackParamList, TabParamList } from './types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const TAB_BAR_BASE = 60;
-const ICON_SIZE = 24;
+const TAB_BAR_CONTENT_HEIGHT = 56;
+const ICON_SIZE = 22;
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
 
@@ -95,7 +95,12 @@ function TabLabel({ label, focused }: { label: string; focused: boolean }) {
 
 function MainTabs() {
   const insets = useSafeAreaInsets();
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
+  // Android 3-button nav often reports bottom inset 0 — add padding so labels aren't clipped
+  const tabBarBottomPadding = Math.max(
+    insets.bottom,
+    Platform.select({ android: 28, ios: 12, default: 10 }) ?? 10,
+  );
+  const tabBarHeight = TAB_BAR_CONTENT_HEIGHT + tabBarBottomPadding;
   const { isLoggedIn, isAdmin, booting } = useAuth();
 
   if (booting) {
@@ -109,7 +114,6 @@ function MainTabs() {
   return (
     <Tab.Navigator
       initialRouteName="Home"
-      safeAreaInsets={{ bottom: bottomInset }}
       screenOptions={({ route }) => ({
         ...headerOptions,
         tabBarActiveTintColor: colors.accent,
@@ -133,12 +137,13 @@ function MainTabs() {
           backgroundColor: colors.surface,
           borderTopWidth: 1,
           borderTopColor: colors.border,
-          height: TAB_BAR_BASE + bottomInset,
-          paddingTop: 10,
-          paddingBottom: bottomInset + 6,
-          elevation: 0,
+          height: tabBarHeight,
+          paddingTop: 6,
+          paddingBottom: tabBarBottomPadding,
+          elevation: 8,
           shadowOpacity: 0,
         },
+        tabBarLabelPosition: 'below-icon',
         tabBarItemStyle: styles.tabItem,
       })}
     >
@@ -172,14 +177,16 @@ export function AppNavigator() {
 const styles = StyleSheet.create({
   boot: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
   tabItem: {
-    paddingTop: 4,
-    paddingBottom: 2,
+    paddingTop: 2,
+    paddingBottom: 0,
   },
   tabLabel: {
     fontFamily: fonts.semiBold,
-    fontSize: 11,
+    fontSize: 10,
+    lineHeight: 13,
     color: colors.textMuted,
-    marginTop: 4,
+    marginTop: 2,
+    marginBottom: 2,
   },
   tabLabelActive: { fontFamily: fonts.bold, color: colors.accent },
 });

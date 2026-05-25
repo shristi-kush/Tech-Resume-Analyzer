@@ -1,17 +1,64 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import {
+  getResumeFileValidationError,
+  getResumeLinkValidationError,
+} from '../utils/resumeLink';
 
 const PRODUCTION_API = 'https://tech-resume-analyzer-1.onrender.com';
+const LOCAL_API_PORT = 5000;
+
+/** Metro / Expo Go host (your PC's LAN IP when testing on a physical device). */
+function getMetroLanHost(): string | null {
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    (Constants.expoGoConfig as { debuggerHost?: string } | undefined)?.debuggerHost;
+  if (!hostUri) return null;
+  const host = hostUri.split(':')[0];
+  if (host && host !== 'localhost' && host !== '127.0.0.1') {
+    return host;
+  }
+  return null;
+}
+
+/** Map localhost in .env to a host the phone/emulator can reach. */
+function rewriteLocalhostUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (!['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+      return url.replace(/\/$/, '');
+    }
+    const port = parsed.port || String(LOCAL_API_PORT);
+    const lan = getMetroLanHost();
+    if (lan) {
+      return `http://${lan}:${port}`;
+    }
+    if (Platform.OS === 'android') {
+      return `http://10.0.2.2:${port}`;
+    }
+    return `http://127.0.0.1:${port}`;
+  } catch {
+    return url.replace(/\/$/, '');
+  }
+}
+
+function normalizeApiUrl(raw: string): string {
+  let url = raw.trim().replace(/\/$/, '');
+  if (/^https:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(url)) {
+    url = url.replace(/^https:/i, 'http:');
+  }
+  return rewriteLocalhostUrl(url);
+}
 
 /**
  * Resolve Flask API URL:
- * - EXPO_PUBLIC_API_URL wins if set
+ * - EXPO_PUBLIC_API_URL wins if set (use http://localhost:5000 for local dev)
  * - app.json extra.apiUrl (production default)
- * - Dev: same LAN IP as Metro (Expo Go) or emulator localhost
+ * - Dev fallback: Metro LAN IP, Android emulator 10.0.2.2, or localhost
  */
 function resolveApiBase(): string {
   if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
+    return normalizeApiUrl(process.env.EXPO_PUBLIC_API_URL);
   }
 
   const fromExtra = Constants.expoConfig?.extra?.apiUrl as string | undefined;
@@ -23,25 +70,23 @@ function resolveApiBase(): string {
     return PRODUCTION_API;
   }
 
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    (Constants.expoGoConfig as { debuggerHost?: string } | undefined)?.debuggerHost;
-
-  if (hostUri) {
-    const host = hostUri.split(':')[0];
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return `http://${host}:5000`;
-    }
+  const lan = getMetroLanHost();
+  if (lan) {
+    return `http://${lan}:${LOCAL_API_PORT}`;
   }
 
   if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:5000';
+    return `http://10.0.2.2:${LOCAL_API_PORT}`;
   }
 
-  return 'http://localhost:5000';
+  return `http://127.0.0.1:${LOCAL_API_PORT}`;
 }
 
 export const API_BASE = resolveApiBase();
+
+if (__DEV__) {
+  console.log('[API] Using backend:', API_BASE);
+}
 
 export type AnalysisMode = 'nlp' | 'ollama';
 
@@ -139,29 +184,21 @@ export async function checkOllamaStatus(): Promise<{
   }
 }
 
-export async function analyzeResume(params: {
-  uri: string;
-  fileName: string;
+type AnalyzeCommon = {
   name?: string;
   email?: string;
   phone?: string;
   analysisMode?: AnalysisMode;
-}): Promise<AnalyzeResult> {
-  const form = new FormData();
-  form.append('act_name', params.name ?? '');
-  form.append('act_mail', params.email ?? '');
-  form.append('act_mob', params.phone ?? '');
-  form.append('analysis_mode', params.analysisMode ?? 'nlp');
-  form.append('resume', {
-    uri: params.uri,
-    name: params.fileName,
-    type: 'application/pdf',
-  } as unknown as Blob);
+};
 
-  let res: Response;
+async function postAnalyze(
+  form: FormData,
+  analysisMode: AnalysisMode = 'nlp',
+): Promise<AnalyzeResult> {
   const controller = new AbortController();
-  const timeoutMs = params.analysisMode === 'ollama' ? 510_000 : 180_000;
+  const timeoutMs = analysisMode === 'ollama' ? 510_000 : 180_000;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
   try {
     const authHeaders = await getAuthHeaders();
     res = await fetch(`${API_BASE}/api/v1/analyze`, {
@@ -186,8 +223,105 @@ export async function analyzeResume(params: {
   }
 
   const json = await parseJson(res);
-  if (!res.ok) throw new Error(json.error || 'Analysis failed');
+  if (!res.ok) {
+    const msg = json.error || 'Analysis failed';
+    if (msg.includes('PDF file required') && msg.includes('resume')) {
+      throw new Error(
+        'This server does not support PDF links yet. Push the latest backend to Render and redeploy.',
+      );
+    }
+    throw new Error(msg);
+  }
   return json.data;
+}
+
+async function postAnalyzeJson(
+  body: Record<string, string | number>,
+  analysisMode: AnalysisMode = 'nlp',
+): Promise<AnalyzeResult> {
+  const controller = new AbortController();
+  const timeoutMs = analysisMode === 'ollama' ? 510_000 : 180_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    const authHeaders = await getAuthHeaders();
+    res = await fetch(`${API_BASE}/api/v1/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Upload-Source': 'mobile',
+        ...authHeaders,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(
+        'Analysis took too long. Try Quick scan, or retry Detailed review on a stable connection.',
+      );
+    }
+    throw new Error(
+      API_BASE.startsWith('https://')
+        ? 'Could not reach the server. It may be waking up (free tier) — wait a minute and try again.'
+        : 'Could not connect. Start the Flask backend locally or set EXPO_PUBLIC_API_URL in mobile/.env.',
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const json = await parseJson(res);
+  if (!res.ok) {
+    const msg = json.error || 'Analysis failed';
+    if (msg.includes('PDF file required') && msg.includes('resume')) {
+      throw new Error(
+        'This server does not support PDF links yet. Push the latest backend to Render and redeploy.',
+      );
+    }
+    throw new Error(msg);
+  }
+  return json.data;
+}
+
+export async function analyzeResume(
+  params: {
+    uri: string;
+    fileName: string;
+  } & AnalyzeCommon,
+): Promise<AnalyzeResult> {
+  const fileError = getResumeFileValidationError(
+    params.fileName || 'resume.pdf',
+    'application/pdf',
+  );
+  if (fileError) throw new Error(fileError);
+  const form = new FormData();
+  form.append('act_name', params.name ?? '');
+  form.append('act_mail', params.email ?? '');
+  form.append('act_mob', params.phone ?? '');
+  form.append('analysis_mode', params.analysisMode ?? 'nlp');
+  form.append('resume', {
+    uri: params.uri,
+    name: params.fileName,
+    type: 'application/pdf',
+  } as unknown as Blob);
+  return postAnalyze(form, params.analysisMode ?? 'nlp');
+}
+
+export async function analyzeResumeFromLink(
+  params: { resumeUrl: string } & AnalyzeCommon,
+): Promise<AnalyzeResult> {
+  const linkError = getResumeLinkValidationError(params.resumeUrl);
+  if (linkError) throw new Error(linkError);
+  return postAnalyzeJson(
+    {
+      act_name: params.name ?? '',
+      act_mail: params.email ?? '',
+      act_mob: params.phone ?? '',
+      analysis_mode: params.analysisMode ?? 'nlp',
+      resume_url: params.resumeUrl.trim(),
+    },
+    params.analysisMode ?? 'nlp',
+  );
 }
 
 export async function submitFeedback(body: {

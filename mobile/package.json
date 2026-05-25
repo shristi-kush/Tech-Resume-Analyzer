@@ -4,8 +4,11 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start:local": "expo start -c",
+    "android": "expo run:android",
+    "android:prebuild": "expo prebuild --platform android --clean",
+    "android:run": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web"
   },
   "dependencies": {
